@@ -42,7 +42,16 @@ jobs:
     - name: Launch EC2 instance
       id: launch_ec2
       run: |
-        INSTANCE_ID=$(aws ec2 run-instances --image-id ami-084568db4383264d4 --count 1 --instance-type t2.micro --key-name key-03164e1218ba76631 --security-group-ids sg-0226bb335bbecbf05 --subnet-id subnet-0efc1a680f00257a5 --associate-public-ip-address --query 'Instances[0].InstanceId' --output text)
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id ami-084568db4383264d4 \  # Update the AMI ID as needed
+          --count 1 \
+          --instance-type t2.micro \
+          --key-name ${{ secrets.AWS_KEY_PAIR_NAME }} \  # Use GitHub Secret for key pair name
+          --security-group-ids ${{ secrets.AWS_SECURITY_GROUP_ID }} \
+          --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
+          --associate-public-ip-address \
+          --query 'Instances[0].InstanceId' \
+          --output text)
         
         echo "Launched EC2 instance with ID: $INSTANCE_ID"
         echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT  # Set output for subsequent steps
@@ -51,6 +60,7 @@ jobs:
     - name: Wait for EC2 instance to be ready
       run: |
         aws ec2 wait instance-running --instance-ids ${{ steps.launch_ec2.outputs.instance_id }}
+        echo "EC2 instance is now running."
 
     # Send the pipeline script to EC2 and execute it
     - name: Run pipeline script on EC2
@@ -67,10 +77,11 @@ jobs:
     # Optionally upload artifacts to S3
     - name: Upload artifacts to S3
       run: |
-        aws s3 cp /path/to/artifact s3://your-bucket-name/path/ --recursive
+        aws s3 cp /path/to/artifact s3://${{ secrets.S3_BUCKET_NAME }}/path/ --recursive
+        echo "Artifacts uploaded to S3."
 
     # Clean up (Stop EC2 instance after pipeline execution)
-    - name: Stop EC2 instance after pipeline execution
+    - name: Terminate EC2 instance after pipeline execution
       run: |
         aws ec2 terminate-instances --instance-ids ${{ steps.launch_ec2.outputs.instance_id }}
         echo "Terminated EC2 instance."
