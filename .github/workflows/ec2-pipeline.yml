@@ -23,18 +23,25 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
+    # Install AWS CLI
+    - name: Install AWS CLI
+      run: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
+
     # Launch an EC2 instance dynamically (or use an existing instance ID)
     - name: Launch EC2 instance
       id: launch_ec2
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
-          --image-id ami-084568db4383264d4 \  # Correct AMI ID (Amazon Linux 2 in us-east-1)
+          --image-id ami-084568db4383264d4 \  # Amazon Linux 2 AMI in us-east-1, update if needed
           --count 1 \
           --instance-type t2.micro \
           --key-name key-01d3ba78ff072d2b2 \
-          --security-group-ids sg-0226bb335bbecbf05 \
-          --subnet-id subnet-0efc1a680f00257a5 \
-          --associate-public-ip-address \   # Ensure the instance gets a public IP
+          --security-group-ids sg-0226bb335bbecbf05 \  # Ensure the security group allows outbound traffic
+          --subnet-id subnet-0efc1a680f00257a5 \  # Use a subnet with public IP assignment
+          --associate-public-ip-address \   # Ensure public IP
           --query 'Instances[0].InstanceId' \
           --output text)
         
