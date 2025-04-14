@@ -63,6 +63,9 @@ jobs:
           --output text > $KEY_PAIR_NAME.pem
         chmod 400 $KEY_PAIR_NAME.pem
         echo "Created key pair: $KEY_PAIR_NAME"
+        
+        # Export the key pair name for use in later steps
+        echo "KEY_PAIR_NAME=$KEY_PAIR_NAME" >> $GITHUB_ENV
 
     - name: Launch EC2 Instance
       run: |
@@ -70,7 +73,7 @@ jobs:
           --image-id ami-084568db4383264d4 \
           --instance-type t2.micro \
           --iam-instance-profile Name="EC2SSMInstanceProfile1" \
-          --key-name $KEY_PAIR_NAME \
+          --key-name ${{ env.KEY_PAIR_NAME }} \
           --security-group-ids $SECURITY_GROUP_ID \
           --associate-public-ip-address \
           --query "Instances[0].InstanceId" \
