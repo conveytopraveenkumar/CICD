@@ -53,9 +53,10 @@ jobs:
         aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
         aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 80 --cidr 0.0.0.0/0
 
-    - name: Create Key Pair
+    - name: Create Key Pair with Unique Name
       run: |
-        KEY_PAIR_NAME="my-ec2-key-pair"
+        # Generate a unique key pair name
+        KEY_PAIR_NAME="my-ec2-key-pair-$(date +%s)"
         aws ec2 create-key-pair \
           --key-name $KEY_PAIR_NAME \
           --query "KeyMaterial" \
@@ -87,7 +88,7 @@ jobs:
           --image-id ami-084568db4383264d4 \
           --instance-type t2.micro \
           --iam-instance-profile Name="AmazonEC2RoleforSSM" \
-          --key-name my-ec2-key-pair \
+          --key-name $KEY_PAIR_NAME \
           --security-group-ids $SECURITY_GROUP_ID \
           --subnet-id $SUBNET_ID \
           --associate-public-ip-address \
@@ -137,8 +138,8 @@ jobs:
 
     - name: Delete Key Pair
       run: |
-        aws ec2 delete-key-pair --key-name my-ec2-key-pair
-        echo "Deleted key pair my-ec2-key-pair."
+        aws ec2 delete-key-pair --key-name $KEY_PAIR_NAME
+        echo "Deleted key pair $KEY_PAIR_NAME."
 
     - name: Delete Security Group
       run: |
