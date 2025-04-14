@@ -28,7 +28,9 @@ jobs:
       run: |
         if [ -x "$(command -v aws)" ]; then
           echo "AWS CLI is already installed. Updating..."
-          sudo /usr/local/aws-cli/v2/current/dist/aws/install --update
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --update
         else
           echo "AWS CLI not found. Installing..."
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
@@ -62,13 +64,19 @@ jobs:
     # Send the pipeline script to EC2 and execute it
     - name: Run pipeline script on EC2
       run: |
-        aws ssm send-command \
+        COMMAND_ID=$(aws ssm send-command \
           --instance-ids ${{ steps.launch_ec2.outputs.instance_id }} \
           --document-name "AWS-RunShellScript" \
           --comment "Running pipeline script" \
           --parameters 'commands=["cd /home/ec2-user && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
           --output text \
-          --query "Command.CommandId"
+          --query "Command.CommandId")
+        echo "Pipeline script is running. Command ID: $COMMAND_ID"
+
+    # Optionally upload artifacts to S3
+    - name: Upload artifacts to S3
+      run: |
+        aws s3 cp /path/to/artifact s3://your-bucket-name/path/ --recursive
 
     # Clean up (Stop EC2 instance after pipeline execution)
     - name: Stop EC2 instance after pipeline execution
