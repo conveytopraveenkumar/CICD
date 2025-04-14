@@ -3,7 +3,7 @@ name: Run EC2 Pipeline and Upload to S3
 on:
   push:
     branches:
-      - main  # Trigger on push to the main branch
+      - main  # Trigger on push to main branch
 
 jobs:
   deploy:
@@ -73,10 +73,23 @@ jobs:
           exit 1
         fi
 
-        # Use a valid subnet CIDR block within the VPC's range
-        SUBNET_CIDR="10.0.1.0/24"  # Update this based on your VPC's CIDR block
+        # Get the VPC CIDR block to validate subnet CIDR range
+        VPC_CIDR=$(aws ec2 describe-vpcs --vpc-id $VPC_ID --query "Vpcs[0].CidrBlock" --output text)
+        echo "VPC CIDR Block: $VPC_CIDR"
 
-        # Create a subnet
+        # Choose a valid subnet CIDR block based on VPC CIDR
+        # For VPC CIDR block 10.0.0.0/16, use subnet CIDR 10.0.1.0/24
+        # For VPC CIDR block 10.0.0.0/28, use subnet CIDR 10.0.0.0/29
+        if [ "$VPC_CIDR" == "10.0.0.0/16" ]; then
+          SUBNET_CIDR="10.0.1.0/24"  # Valid for 10.0.0.0/16
+        elif [ "$VPC_CIDR" == "10.0.0.0/28" ]; then
+          SUBNET_CIDR="10.0.0.0/29"  # Valid for 10.0.0.0/28
+        else
+          echo "Unsupported VPC CIDR block: $VPC_CIDR"
+          exit 1
+        fi
+
+        # Create subnet
         SUBNET_ID=$(aws ec2 create-subnet \
           --vpc-id $VPC_ID \
           --cidr-block $SUBNET_CIDR \
