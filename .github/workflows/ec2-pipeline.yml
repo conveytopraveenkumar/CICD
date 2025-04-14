@@ -25,8 +25,8 @@ jobs:
       - name: Launch EC2 Instance
         id: ec2
         run: |
-          # Make sure the AWS region is set
-          export AWS_REGION=${{ secrets.AWS_REGION }}  # Set AWS region from GitHub Secrets
+          # Ensure AWS region is set
+          export AWS_REGION=${{ secrets.AWS_REGION }}
 
           # Launch EC2 instance using AWS CLI
           INSTANCE_ID=$(aws ec2 run-instances \
@@ -36,8 +36,8 @@ jobs:
             --key-name key-01d3ba78ff072d2b2 \
             --security-group-ids 683395501335 \
             --subnet-id subnet-0d6a48aa0ad0c19a4 \
-            --region $AWS_REGION \  # Ensure the region is passed to the AWS CLI
-            --query 'Instances[0].InstanceId' \
+            --region $AWS_REGION \
+            --query "Instances[0].InstanceId" \
             --output text)
 
           echo "EC2 Instance ID: $INSTANCE_ID"
@@ -45,7 +45,7 @@ jobs:
 
       - name: Wait for EC2 instance to be running
         run: |
-          # Use AWS CLI to wait for the instance to be running
+          # Wait for the instance to be running using AWS CLI
           aws ec2 wait instance-running --instance-ids ${{ env.INSTANCE_ID }} --region $AWS_REGION
           echo "EC2 instance is running."
 
