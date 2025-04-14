@@ -28,17 +28,18 @@ jobs:
       id: launch_ec2
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
-          --image-id ami-xxxxxxxxxxxxxxxxx \  # Use the correct AMI ID
+          --image-id ami-084568db4383264d4 \  # Use the correct AMI ID (Amazon Linux 2 in us-east-1)
           --count 1 \
           --instance-type t2.micro \
-          --key-name my-key-pair \
-          --security-group-ids sg-xxxxxxxxxx \
-          --subnet-id subnet-xxxxxxxxxx \
+          --key-name key-01d3ba78ff072d2b2 \
+          --security-group-ids sg-0226bb335bbecbf05 \
+          --subnet-id subnet-0efc1a680f00257a5 \
+          --associate-public-ip-address \   # Ensure the instance gets a public IP
           --query 'Instances[0].InstanceId' \
           --output text)
         
         echo "Launched EC2 instance with ID: $INSTANCE_ID"
-        echo "::set-output name=instance_id::$INSTANCE_ID"
+        echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT  # Set output for subsequent steps
 
     # Wait for the EC2 instance to be ready
     - name: Wait for EC2 instance to be ready
