@@ -1,0 +1,67 @@
+name: Run EC2 Pipeline and Upload to S3
+
+on:
+  push:
+    branches:
+      - main  # Trigger the pipeline when pushing to the `main` branch
+
+jobs:
+  deploy:
+    name: Deploy to EC2 and Run Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout the code from the repository
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # Set up AWS credentials using GitHub secrets
+    - name: Set up AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    # Launch an EC2 instance dynamically (or use an existing instance ID)
+    - name: Launch EC2 instance
+      id: launch_ec2
+      run: |
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id ami-xxxxxxxxxxxxxxxxx \  # Use the correct AMI ID
+          --count 1 \
+          --instance-type t2.micro \
+          --key-name my-key-pair \
+          --security-group-ids sg-xxxxxxxxxx \
+          --subnet-id subnet-xxxxxxxxxx \
+          --query 'Instances[0].InstanceId' \
+          --output text)
+        
+        echo "Launched EC2 instance with ID: $INSTANCE_ID"
+        echo "::set-output name=instance_id::$INSTANCE_ID"
+
+    # Wait for the EC2 instance to be ready
+    - name: Wait for EC2 instance to be ready
+      run: |
+        aws ec2 wait instance-running --instance-ids ${{ steps.launch_ec2.outputs.instance_id }}
+
+    # Send the pipeline script to EC2 and execute it
+    - name: Run pipeline script on EC2
+      run: |
+        aws ssm send-command \
+          --instance-ids ${{ steps.launch_ec2.outputs.instance_id }} \
+          --document-name "AWS-RunShellScript" \
+          --comment "Running pipeline script" \
+          --parameters 'commands=["cd /home/ec2-user && curl -O https://raw.githubusercontent.com/<your-username>/<repo>/main/pipeline.sh && chmod +x pipeline.sh && ./pipeline.sh"]' \
+          --output text \
+          --query "Command.CommandId"
+
+    # Clean up (Stop EC2 instance if needed)
+    - name: Stop EC2 instance after pipeline execution
+      run: |
+        aws ec2 terminate-instances --instance-ids ${{ steps.launch_ec2.outputs.instance_id }}
+        echo "Terminated EC2 instance."
+
+    # Done
+    - name: Pipeline Complete
+      run: echo "Pipeline execution completed and artifacts uploaded to S3."
