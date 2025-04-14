@@ -28,7 +28,7 @@ jobs:
       id: launch_ec2
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
-          --image-id ami-084568db4383264d4 \  # Use the correct AMI ID (Amazon Linux 2 in us-east-1)
+          --image-id ami-084568db4383264d4 \  # Correct AMI ID (Amazon Linux 2 in us-east-1)
           --count 1 \
           --instance-type t2.micro \
           --key-name key-01d3ba78ff072d2b2 \
@@ -53,11 +53,11 @@ jobs:
           --instance-ids ${{ steps.launch_ec2.outputs.instance_id }} \
           --document-name "AWS-RunShellScript" \
           --comment "Running pipeline script" \
-          --parameters 'commands=["cd /home/ec2-user && curl -O https://raw.githubusercontent.com/<your-username>/<repo>/main/pipeline.sh && chmod +x pipeline.sh && ./pipeline.sh"]' \
+          --parameters 'commands=["cd /home/ec2-user && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
           --output text \
           --query "Command.CommandId"
 
-    # Clean up (Stop EC2 instance if needed)
+    # Clean up (Stop EC2 instance after pipeline execution)
     - name: Stop EC2 instance after pipeline execution
       run: |
         aws ec2 terminate-instances --instance-ids ${{ steps.launch_ec2.outputs.instance_id }}
