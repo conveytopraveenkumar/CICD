@@ -54,7 +54,7 @@ jobs:
           echo "SSM agent is not online. Please check the EC2 instance."
           exit 1
         fi
-        echo "SSM agent is online on instance $INSTANCE_ID."
+        echo "✅ SSM agent is online on instance $INSTANCE_ID."
 
     - name: Run pipeline script on EC2 via SSM
       run: |
@@ -62,22 +62,21 @@ jobs:
           --instance-ids $INSTANCE_ID \
           --document-name "AWS-RunShellScript" \
           --comment "Run pipeline script" \
-          --parameters 'commands=["cd /home/ec2-user && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
+          --parameters 'commands=["cd /home/ubuntu && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
           --query "Command.CommandId" \
           --output text)
-        echo "SSM command sent. Command ID: $COMMAND_ID"
+        echo "✅ SSM command sent. Command ID: $COMMAND_ID"
 
-    # (OPTIONAL) Artifact upload moved to the EC2 script
     - name: Notify about artifact upload
       run: |
-        echo "Artifact upload is handled within the EC2 script (Pipeline.sh)."
-        echo "Ensure the script uploads output to S3 like:"
-        echo "aws s3 cp /home/ec2-user/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
+        echo "ℹ️ Artifact upload should be handled inside the Pipeline.sh script on EC2."
+        echo "Add this to Pipeline.sh if not already:"
+        echo "aws s3 cp /home/ubuntu/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
 
     - name: Terminate EC2 instance after execution
       run: |
         aws ec2 terminate-instances --instance-ids $INSTANCE_ID
-        echo "EC2 instance $INSTANCE_ID terminated."
+        echo "☠️ EC2 instance $INSTANCE_ID terminated."
 
     - name: Pipeline Complete
       run: echo "✅ Pipeline completed successfully."
