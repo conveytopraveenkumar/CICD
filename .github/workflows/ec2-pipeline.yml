@@ -70,9 +70,8 @@ jobs:
           --image-id ami-084568db4383264d4 \
           --instance-type t2.micro \
           --iam-instance-profile Name="AmazonEC2RoleforSSM" \
-          --key-name $KEY_PAIR_NAME \
+          --key-name $KEY_PAIR_NAME \  # Ensure this is passed correctly
           --security-group-ids $SECURITY_GROUP_ID \
-          --subnet-id $SUBNET_ID \
           --associate-public-ip-address \
           --query "Instances[0].InstanceId" \
           --output text)
@@ -112,6 +111,7 @@ jobs:
         echo "ℹ️ Artifact upload should be handled inside the Pipeline.sh script on EC2."
         echo "Add this to Pipeline.sh if not already:"
         echo "aws s3 cp /home/ubuntu/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
+
 
     - name: Pipeline Complete
       run: echo "✅ Pipeline completed successfully."
