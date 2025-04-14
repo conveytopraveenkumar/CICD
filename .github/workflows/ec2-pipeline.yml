@@ -74,8 +74,13 @@ jobs:
     # Optionally upload artifacts to S3
     - name: Upload artifacts to S3
       run: |
-        aws s3 cp /path/to/artifact s3://${{ secrets.S3_BUCKET_NAME }}/path/ --recursive
-        echo "Artifacts uploaded to S3."
+        ARTIFACT_PATH="/path/to/artifact"  # Replace this with the actual path to your artifact
+        if [ -d "$ARTIFACT_PATH" ]; then
+          aws s3 cp "$ARTIFACT_PATH" s3://${{ secrets.S3_BUCKET_NAME }}/path/ --recursive
+          echo "Artifacts uploaded to S3."
+        else
+          echo "Artifact path does not exist. Skipping artifact upload."
+        fi
 
     # Clean up (Stop EC2 instance after pipeline execution)
     - name: Terminate EC2 instance after pipeline execution
