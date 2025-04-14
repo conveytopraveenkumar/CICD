@@ -23,32 +23,27 @@ jobs:
 
     - name: Ensure latest AWS CLI version
       run: |
-        # Check if AWS CLI is already installed
         if [ -x "$(command -v aws)" ]; then
           echo "AWS CLI is already installed. Updating..."
         else
           echo "AWS CLI not found. Installing..."
-          
-          # Download and install AWS CLI v2 directly via AWS's official install script
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           if [ $? -ne 0 ]; then
             echo "Failed to download AWS CLI installer."
             exit 1
           fi
-          
-          # Unzip and install AWS CLI
           unzip awscliv2.zip
           sudo ./aws/install --update
-          
-          # Clean up
           rm -rf awscliv2.zip aws/
           echo "AWS CLI installed successfully."
         fi
 
-    - name: Create Security Group
+    - name: Create Security Group with Unique Name
       run: |
+        # Generate a unique name for the security group
+        SECURITY_GROUP_NAME="MySecurityGroup-$(date +%s)"
         SECURITY_GROUP_ID=$(aws ec2 create-security-group \
-          --group-name MySecurityGroup \
+          --group-name $SECURITY_GROUP_NAME \
           --description "Security group for EC2 instance" \
           --query "GroupId" \
           --output text)
@@ -70,17 +65,13 @@ jobs:
 
     - name: Create a Subnet
       run: |
-        # Dynamically get the VPC ID (you can replace it if you know your VPC ID)
         VPC_ID=$(aws ec2 describe-vpcs --query "Vpcs[0].VpcId" --output text)
-        
-        # Check if the VPC ID was found
         if [ "$VPC_ID" == "None" ]; then
           echo "VPC not found. Please check your VPC configuration."
           exit 1
         fi
         
-        # Create a subnet with a different CIDR block (ensure it's non-overlapping)
-        SUBNET_CIDR="10.0.2.0/24"  # Use a different, non-overlapping CIDR range
+        SUBNET_CIDR="10.0.2.0/24"
         SUBNET_ID=$(aws ec2 create-subnet \
           --vpc-id $VPC_ID \
           --cidr-block $SUBNET_CIDR \
