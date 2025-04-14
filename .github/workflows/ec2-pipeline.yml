@@ -1,82 +1,78 @@
-name: Run EC2 Pipeline and Upload to S3
+name: Dynamic EC2 Pipeline and S3 Upload
 
 on:
   push:
     branches:
-      - main  # Trigger on push to main branch
+      - main
 
 jobs:
   deploy:
     name: Deploy to EC2 and Run Pipeline
     runs-on: ubuntu-latest
 
-    env:
-      INSTANCE_ID: i-0c6340dd26b28f109  # Hardcoded EC2 instance ID
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up AWS credentials
+    - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Ensure latest AWS CLI version
+    - name: Launch EC2 instance
+      id: ec2
       run: |
-        if [ -x "$(command -v aws)" ]; then
-          echo "AWS CLI is already installed. Updating..."
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install --update
-        else
-          echo "Installing AWS CLI..."
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install
-        fi
-
-    - name: Wait for EC2 instance to be running
-      run: |
-        echo "Waiting for EC2 instance $INSTANCE_ID to be running..."
-        aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-        echo "EC2 instance $INSTANCE_ID is now running."
-
-    - name: Check if SSM agent is online
-      run: |
-        echo "Checking SSM status..."
-        STATUS=$(aws ssm describe-instance-information \
-          --query "InstanceInformationList[?InstanceId=='$INSTANCE_ID'].PingStatus" \
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id ami-084568db4383264d4 \
+          --instance-type t2.micro \
+          --key-name github-key \
+          --iam-instance-profile Name="EC2InstanceSSMRole" \
+          --security-group-ids ${{ secrets.AWS_SECURITY_GROUP_ID }} \
+          --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
+          --associate-public-ip-address \
+          --query 'Instances[0].InstanceId' \
           --output text)
-        if [ "$STATUS" != "Online" ]; then
-          echo "SSM agent is not online. Please check the EC2 instance."
-          exit 1
-        fi
-        echo "✅ SSM agent is online on instance $INSTANCE_ID."
 
-    - name: Run pipeline script on EC2 via SSM
+        echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+        echo "Launched EC2 instance: $INSTANCE_ID"
+
+    - name: Wait for EC2 to be running
+      run: |
+        aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+        echo "✅ Instance $INSTANCE_ID is now running."
+
+    - name: Wait for SSM to be online
+      run: |
+        echo "Waiting for SSM agent..."
+        for i in {1..30}; do
+          STATUS=$(aws ssm describe-instance-information \
+            --query "InstanceInformationList[?InstanceId=='$INSTANCE_ID'].PingStatus" \
+            --output text)
+          echo "SSM status: $STATUS"
+          if [ "$STATUS" = "Online" ]; then
+            echo "✅ SSM agent is online."
+            break
+          fi
+          sleep 10
+        done
+
+    - name: Run pipeline script via SSM
       run: |
         COMMAND_ID=$(aws ssm send-command \
-          --instance-ids $INSTANCE_ID \
+          --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
-          --comment "Run pipeline script" \
+          --comment "Run pipeline" \
           --parameters 'commands=["cd /home/ubuntu && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
           --query "Command.CommandId" \
           --output text)
-        echo "✅ SSM command sent. Command ID: $COMMAND_ID"
+        echo "📦 Command sent. Command ID: $COMMAND_ID"
 
-    - name: Notify about artifact upload
-      run: |
-        echo "ℹ️ Artifact upload should be handled inside the Pipeline.sh script on EC2."
-        echo "Add this to Pipeline.sh if not already:"
-        echo "aws s3 cp /home/ubuntu/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
-
-    - name: Terminate EC2 instance after execution
+    - name: Terminate EC2 instance
       run: |
         aws ec2 terminate-instances --instance-ids $INSTANCE_ID
-        echo "☠️ EC2 instance $INSTANCE_ID terminated."
+        echo "☠️ Terminated EC2 instance: $INSTANCE_ID"
 
-    - name: Pipeline Complete
-      run: echo "✅ Pipeline completed successfully."
+    - name: Done
+      run: echo "✅ Pipeline completed and instance terminated."
