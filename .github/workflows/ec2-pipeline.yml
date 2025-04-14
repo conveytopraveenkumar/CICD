@@ -11,50 +11,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # Step 1: Checkout repo code
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up AWS credentials
+    # Step 2: Set up AWS credentials from GitHub Secrets
+    - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Update AWS CLI
+    # Step 3: (Optional) Update AWS CLI on GitHub runner
+    - name: Ensure latest AWS CLI version
       run: |
         if [ -x "$(command -v aws)" ]; then
-          echo "AWS CLI is already installed. Updating..."
+          echo "Updating AWS CLI..."
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip -q awscliv2.zip
           sudo ./aws/install --update
         else
-          echo "AWS CLI not found. Installing..."
+          echo "Installing AWS CLI..."
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip -q awscliv2.zip
           sudo ./aws/install
         fi
 
+    # Step 4: Wait for your EC2 instance to be ready (SSM-enabled)
     - name: Wait for EC2 instance to be ready
       run: |
         aws ec2 wait instance-status-ok --instance-ids i-0c6340dd26b28f109
-        echo "EC2 instance i-0c6340dd26b28f109 is ready."
+        echo "EC2 instance is running and ready."
 
+    # Step 5: Send command via SSM to run your pipeline script
     - name: Run pipeline script on EC2
       run: |
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids i-0c6340dd26b28f109 \
           --document-name "AWS-RunShellScript" \
-          --comment "Running pipeline script" \
+          --comment "Running pipeline script from GitHub Actions" \
           --parameters 'commands=["cd /home/ec2-user && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
           --output text \
           --query "Command.CommandId")
-        echo "Pipeline script is running. Command ID: $COMMAND_ID"
+        echo "SSM Command sent. Command ID: $COMMAND_ID"
 
+    # Step 6: Upload artifacts (modify path as needed)
     - name: Upload artifacts to S3
       run: |
-        aws s3 cp /path/to/artifact s3://${{ secrets.S3_BUCKET_NAME }}/path/ --recursive
+        aws s3 cp /path/to/artifact s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive
         echo "Artifacts uploaded to S3."
 
+    # Step 7: Done
     - name: Pipeline Complete
-      run: echo "Pipeline execution completed and artifacts uploaded to S3."
+      run: echo "Pipeline completed successfully. Artifacts uploaded to S3."
