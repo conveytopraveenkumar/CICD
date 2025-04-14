@@ -64,41 +64,6 @@ jobs:
         chmod 400 $KEY_PAIR_NAME.pem
         echo "Created key pair: $KEY_PAIR_NAME"
 
-    - name: Create a Subnet with Valid CIDR Block
-      run: |
-        # Get the VPC ID (ensure this is the correct VPC)
-        VPC_ID=$(aws ec2 describe-vpcs --query "Vpcs[0].VpcId" --output text)
-        if [ "$VPC_ID" == "None" ]; then
-          echo "VPC not found. Please check your VPC configuration."
-          exit 1
-        fi
-
-        # Get the VPC CIDR block to validate subnet CIDR range
-        VPC_CIDR=$(aws ec2 describe-vpcs --vpc-id $VPC_ID --query "Vpcs[0].CidrBlock" --output text)
-        echo "VPC CIDR Block: $VPC_CIDR"
-
-        # Choose a valid subnet CIDR block based on VPC CIDR
-        if [ "$VPC_CIDR" == "10.0.0.0/16" ]; then
-          SUBNET_CIDR="10.0.1.0/24"  # Valid for 10.0.0.0/16
-        elif [ "$VPC_CIDR" == "172.31.0.0/16" ]; then
-          SUBNET_CIDR="172.31.2.0/24"  # Valid for 172.31.0.0/16 (changed to avoid conflict)
-        elif [ "$VPC_CIDR" == "10.0.0.0/28" ]; then
-          SUBNET_CIDR="10.0.0.0/29"  # Valid for 10.0.0.0/28
-        else
-          echo "Unsupported VPC CIDR block: $VPC_CIDR"
-          exit 1
-        fi
-
-        # Create subnet
-        SUBNET_ID=$(aws ec2 create-subnet \
-          --vpc-id $VPC_ID \
-          --cidr-block $SUBNET_CIDR \
-          --availability-zone ${AWS_REGION}a \
-          --query "Subnet.SubnetId" \
-          --output text)
-
-        echo "Created subnet with ID: $SUBNET_ID"
-
     - name: Launch EC2 Instance
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
