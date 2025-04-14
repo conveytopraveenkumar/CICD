@@ -46,7 +46,7 @@ jobs:
           --image-id ami-084568db4383264d4 \
           --count 1 \
           --instance-type t2.micro \
-          --key-name ${{ secrets.AWS_KEY_PAIR_NAME }} \
+          --key-name key-03164e1218ba76631 \
           --security-group-ids ${{ secrets.AWS_SECURITY_GROUP_ID }} \
           --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
           --associate-public-ip-address \
