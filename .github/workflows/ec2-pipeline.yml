@@ -29,58 +29,20 @@ jobs:
         else
           echo "AWS CLI not found. Installing..."
           
-          # Define the AWS CLI download URL
-          CLI_URL="https://awscli.amazonaws.com/awscliv2/exe/awscliv2.zip"
-          echo "Downloading AWS CLI from: $CLI_URL"
-          
-          # Retry mechanism: Try to download the file up to 3 times if it fails
-          max_retries=3
-          attempt=1
-          success=false
-          
-          while [ $attempt -le $max_retries ]; do
-            echo "Attempt #$attempt: Downloading AWS CLI..."
-            curl -L -o awscliv2.zip $CLI_URL
-            
-            if [ $? -eq 0 ]; then
-              success=true
-              break
-            else
-              echo "Error: Failed to download AWS CLI. Retrying..."
-              ((attempt++))
-              sleep 5  # Wait for 5 seconds before retrying
-            fi
-          done
-          
-          if [ "$success" = false ]; then
-            echo "Failed to download AWS CLI installer after $max_retries attempts."
+          # Download and install AWS CLI v2 directly via AWS's official install script
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          if [ $? -ne 0 ]; then
+            echo "Failed to download AWS CLI installer."
             exit 1
           fi
-        fi
-
-        # Verify if the zip file was downloaded successfully
-        if [ ! -f awscliv2.zip ]; then
-          echo "Failed to download AWS CLI installer."
-          exit 1
-        fi
-
-        # Check if the file is a valid zip file
-        if ! unzip -t awscliv2.zip &>/dev/null; then
-          echo "The downloaded file is not a valid zip file."
-          exit 1
-        fi
-
-        # Unzip and install AWS CLI
-        echo "Unzipping the AWS CLI installer..."
-        unzip -q awscliv2.zip
-
-        # Check if unzip was successful
-        if [ $? -eq 0 ]; then
-          echo "AWS CLI downloaded and unzipped successfully."
+          
+          # Unzip and install AWS CLI
+          unzip awscliv2.zip
           sudo ./aws/install --update
-        else
-          echo "Error: Failed to unzip the AWS CLI installer."
-          exit 1
+          
+          # Clean up
+          rm -rf awscliv2.zip aws/
+          echo "AWS CLI installed successfully."
         fi
 
     - name: Create Security Group
@@ -165,7 +127,5 @@ jobs:
         echo "Add this to Pipeline.sh if not already:"
         echo "aws s3 cp /home/ubuntu/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
 
-    - name: Terminate EC2 instance after execution
-      run: |
-        aws ec2 terminate-instances --instance-ids $INSTANCE_ID
-        echo "☠️ EC2 instance $INSTANCE_ID terminated."
+    - name: Pipeline Complete
+      run: echo "✅ Pipeline completed successfully."
