@@ -23,16 +23,33 @@ jobs:
 
     - name: Ensure latest AWS CLI version
       run: |
+        # Check if AWS CLI is already installed
         if [ -x "$(command -v aws)" ]; then
           echo "AWS CLI is already installed. Updating..."
-          curl "https://awscli.amazonaws.com/awscliv2-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
+          # Attempt to download and unzip the latest AWS CLI
+          curl -O https://awscli.amazonaws.com/awscliv2/exe/awscliv2.zip
+        else
+          echo "AWS CLI not found. Installing..."
+          curl -O https://awscli.amazonaws.com/awscliv2/exe/awscliv2.zip
+        fi
+
+        # Verify if the zip file was downloaded successfully
+        if [ ! -f awscliv2.zip ]; then
+          echo "Failed to download AWS CLI installer."
+          exit 1
+        fi
+
+        # Attempt to unzip and install AWS CLI
+        echo "Unzipping the AWS CLI installer..."
+        unzip -q awscliv2.zip
+
+        # Check if unzip was successful
+        if [ $? -eq 0 ]; then
+          echo "AWS CLI downloaded and unzipped successfully."
           sudo ./aws/install --update
         else
-          echo "Installing AWS CLI..."
-          curl "https://awscli.amazonaws.com/awscliv2-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install
+          echo "Error: Failed to unzip the AWS CLI installer."
+          exit 1
         fi
 
     - name: Create Security Group
@@ -117,6 +134,20 @@ jobs:
         echo "Add this to Pipeline.sh if not already:"
         echo "aws s3 cp /home/ubuntu/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
 
+    - name: Terminate EC2 instance after execution
+      run: |
+        aws ec2 terminate-instances --instance-ids $INSTANCE_ID
+        echo "☠️ EC2 instance $INSTANCE_ID terminated."
+
+    - name: Delete Key Pair
+      run: |
+        aws ec2 delete-key-pair --key-name my-ec2-key-pair
+        echo "Deleted key pair my-ec2-key-pair."
+
+    - name: Delete Security Group
+      run: |
+        aws ec2 delete-security-group --group-id $SECURITY_GROUP_ID
+        echo "Deleted security group $SECURITY_GROUP_ID."
 
     - name: Pipeline Complete
       run: echo "✅ Pipeline completed successfully."
