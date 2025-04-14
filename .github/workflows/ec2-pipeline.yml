@@ -3,7 +3,7 @@ name: Run EC2 Pipeline and Upload to S3
 on:
   push:
     branches:
-      - main  # Trigger the pipeline when pushing to the `main` branch
+      - main
 
 jobs:
   deploy:
@@ -11,11 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Checkout the code from the repository
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # Set up AWS credentials using GitHub secrets
     - name: Set up AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
@@ -23,50 +21,29 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Update AWS CLI (if preexisting version found)
     - name: Update AWS CLI
       run: |
         if [ -x "$(command -v aws)" ]; then
           echo "AWS CLI is already installed. Updating..."
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
+          unzip -q awscliv2.zip
           sudo ./aws/install --update
         else
           echo "AWS CLI not found. Installing..."
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
+          unzip -q awscliv2.zip
           sudo ./aws/install
         fi
 
-    # Launch an EC2 instance dynamically (or use an existing instance ID)
-    - name: Launch EC2 instance
-      id: launch_ec2
-      run: |
-        INSTANCE_ID=$(aws ec2 run-instances \
-          --image-id ami-084568db4383264d4 \
-          --count 1 \
-          --instance-type t2.micro \
-          --key-name key-03164e1218ba76631 \
-          --security-group-ids ${{ secrets.AWS_SECURITY_GROUP_ID }} \
-          --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
-          --associate-public-ip-address \
-          --query 'Instances[0].InstanceId' \
-          --output text)
-        
-        echo "Launched EC2 instance with ID: $INSTANCE_ID"
-        echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT  # Set output for subsequent steps
-
-    # Wait for the EC2 instance to be ready
     - name: Wait for EC2 instance to be ready
       run: |
-        aws ec2 wait instance-running --instance-ids ${{ steps.launch_ec2.outputs.instance_id }}
-        echo "EC2 instance is now running."
+        aws ec2 wait instance-status-ok --instance-ids i-0c6340dd26b28f109
+        echo "EC2 instance i-0c6340dd26b28f109 is ready."
 
-    # Send the pipeline script to EC2 and execute it
     - name: Run pipeline script on EC2
       run: |
         COMMAND_ID=$(aws ssm send-command \
-          --instance-ids ${{ steps.launch_ec2.outputs.instance_id }} \
+          --instance-ids i-0c6340dd26b28f109 \
           --document-name "AWS-RunShellScript" \
           --comment "Running pipeline script" \
           --parameters 'commands=["cd /home/ec2-user && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
@@ -74,18 +51,10 @@ jobs:
           --query "Command.CommandId")
         echo "Pipeline script is running. Command ID: $COMMAND_ID"
 
-    # Optionally upload artifacts to S3
     - name: Upload artifacts to S3
       run: |
         aws s3 cp /path/to/artifact s3://${{ secrets.S3_BUCKET_NAME }}/path/ --recursive
         echo "Artifacts uploaded to S3."
 
-    # Clean up (Stop EC2 instance after pipeline execution)
-    - name: Terminate EC2 instance after pipeline execution
-      run: |
-        aws ec2 terminate-instances --instance-ids ${{ steps.launch_ec2.outputs.instance_id }}
-        echo "Terminated EC2 instance."
-
-    # Done
     - name: Pipeline Complete
       run: echo "Pipeline execution completed and artifacts uploaded to S3."
