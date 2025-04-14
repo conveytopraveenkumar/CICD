@@ -26,11 +26,10 @@ jobs:
         # Check if AWS CLI is already installed
         if [ -x "$(command -v aws)" ]; then
           echo "AWS CLI is already installed. Updating..."
-          # Attempt to download and unzip the latest AWS CLI
-          curl -O https://awscli.amazonaws.com/awscliv2/exe/awscliv2.zip
         else
           echo "AWS CLI not found. Installing..."
-          curl -O https://awscli.amazonaws.com/awscliv2/exe/awscliv2.zip
+          # Download AWS CLI installer
+          curl -L -o awscliv2.zip https://awscli.amazonaws.com/awscliv2/exe/awscliv2.zip
         fi
 
         # Verify if the zip file was downloaded successfully
@@ -39,7 +38,13 @@ jobs:
           exit 1
         fi
 
-        # Attempt to unzip and install AWS CLI
+        # Check if the file is a valid zip file
+        if ! unzip -t awscliv2.zip &>/dev/null; then
+          echo "The downloaded file is not a valid zip file."
+          exit 1
+        fi
+
+        # Unzip and install AWS CLI
         echo "Unzipping the AWS CLI installer..."
         unzip -q awscliv2.zip
 
