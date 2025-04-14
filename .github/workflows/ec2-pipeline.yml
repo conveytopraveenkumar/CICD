@@ -42,7 +42,7 @@ jobs:
     - name: Launch EC2 instance
       id: launch_ec2
       run: |
-        INSTANCE_ID=$(aws ec2 run-instances --image-id ami-084568db4383264d4 --count 1 --instance-type t2.micro --key-name key-01d3ba78ff072d2b2 --security-group-ids sg-0226bb335bbecbf05 --subnet-id subnet-0efc1a680f00257a5 --associate-public-ip-address --query 'Instances[0].InstanceId' --output text)
+        INSTANCE_ID=$(aws ec2 run-instances --image-id ami-084568db4383264d4 --count 1 --instance-type t2.micro --key-name key-03164e1218ba76631 --security-group-ids sg-0226bb335bbecbf05 --subnet-id subnet-0efc1a680f00257a5 --associate-public-ip-address --query 'Instances[0].InstanceId' --output text)
         
         echo "Launched EC2 instance with ID: $INSTANCE_ID"
         echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT  # Set output for subsequent steps
