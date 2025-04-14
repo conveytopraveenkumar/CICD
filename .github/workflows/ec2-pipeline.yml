@@ -1,116 +1,60 @@
-name: Run EC2 Pipeline and Upload to S3
+name: EC2 Pipeline with Artifacts in S3
 
 on:
   push:
     branches:
-      - main  # Trigger on push to main branch
+      - main
 
 jobs:
-  deploy:
-    name: Deploy to EC2 and Run Pipeline
+  setup:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Set up AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Ensure latest AWS CLI version
-      run: |
-        if [ -x "$(command -v aws)" ]; then
-          echo "AWS CLI is already installed. Updating..."
-        else
-          echo "AWS CLI not found. Installing..."
-          curl "https://awscli.amazonaws.com/awscliv2-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          if [ $? -ne 0 ]; then
-            echo "Failed to download AWS CLI installer."
-            exit 1
-          fi
-          unzip awscliv2.zip
-          sudo ./aws/install --update
-          rm -rf awscliv2.zip aws/
-          echo "AWS CLI installed successfully."
-        fi
+  ec2-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Launch EC2 Instance
+        id: ec2
+        run: |
+          # Launch EC2 instance using AWS CLI
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id ami-014d544cfef21b42d \
+            --count 1 \
+            --instance-type t2.micro \
+            --key-name key-01d3ba78ff072d2b2 \
+            --security-group-ids 683395501335 \
+            --subnet-id subnet-0d6a48aa0ad0c19a4 \
+            --query 'Instances[0].InstanceId' \
+            --output text)
 
-    - name: Create Security Group with Unique Name
-      run: |
-        # Generate a unique name for the security group
-        SECURITY_GROUP_NAME="MySecurityGroup-$(date +%s)"
-        SECURITY_GROUP_ID=$(aws ec2 create-security-group \
-          --group-name $SECURITY_GROUP_NAME \
-          --description "Security group for EC2 instance" \
-          --query "GroupId" \
-          --output text)
-        echo "Created security group with ID: $SECURITY_GROUP_ID"
-        
-        # Allow SSH (port 22) and HTTP (port 80) access
-        aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
-        aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 80 --cidr 0.0.0.0/0
+          echo "EC2 Instance ID: $INSTANCE_ID"
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
 
-    - name: Create Key Pair with Unique Name
-      run: |
-        # Generate a unique key pair name
-        KEY_PAIR_NAME="my-ec2-key-pair-$(date +%s)"
-        aws ec2 create-key-pair \
-          --key-name $KEY_PAIR_NAME \
-          --query "KeyMaterial" \
-          --output text > $KEY_PAIR_NAME.pem
-        chmod 400 $KEY_PAIR_NAME.pem
-        echo "Created key pair: $KEY_PAIR_NAME"
+      - name: Wait for EC2 instance to be running
+        run: |
+          # Use AWS CLI to wait for the instance to be running
+          aws ec2 wait instance-running --instance-ids ${{ env.INSTANCE_ID }}
+          echo "EC2 instance is running."
 
-    - name: Launch EC2 Instance
-      run: |
-        INSTANCE_ID=$(aws ec2 run-instances \
-          --image-id ami-084568db4383264d4 \
-          --instance-type t2.micro \
-          --iam-instance-profile Name="EC2SSMInstanceProfile1" \  # Use the correct instance profile name
-          --key-name $KEY_PAIR_NAME \
-          --security-group-ids $SECURITY_GROUP_ID \
-          --associate-public-ip-address \
-          --query "Instances[0].InstanceId" \
-          --output text)
-        echo "EC2 Instance launched with ID: $INSTANCE_ID"
-
-    - name: Wait for EC2 instance to be running
-      run: |
-        echo "Waiting for EC2 instance $INSTANCE_ID to be running..."
-        aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-        echo "EC2 instance $INSTANCE_ID is now running."
-
-    - name: Check if SSM agent is online
-      run: |
-        echo "Checking SSM status..."
-        STATUS=$(aws ssm describe-instance-information \
-          --query "InstanceInformationList[?InstanceId=='$INSTANCE_ID'].PingStatus" \
-          --output text)
-        if [ "$STATUS" != "Online" ]; then
-          echo "SSM agent is not online. Please check the EC2 instance."
-          exit 1
-        fi
-        echo "✅ SSM agent is online on instance $INSTANCE_ID."
-
-    - name: Run pipeline script on EC2 via SSM
-      run: |
-        COMMAND_ID=$(aws ssm send-command \
-          --instance-ids $INSTANCE_ID \
-          --document-name "AWS-RunShellScript" \
-          --comment "Run pipeline script" \
-          --parameters 'commands=["cd /home/ubuntu && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
-          --query "Command.CommandId" \
-          --output text)
-        echo "✅ SSM command sent. Command ID: $COMMAND_ID"
-
-    - name: Notify about artifact upload
-      run: |
-        echo "ℹ️ Artifact upload should be handled inside the Pipeline.sh script on EC2."
-        echo "Add this to Pipeline.sh if not already:"
-        echo "aws s3 cp /home/ubuntu/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
-
-    - name: Pipeline Complete
-      run: echo "✅ Pipeline completed successfully."
+      - name: Run pipeline using SSM
+        run: |
+          # Run the pipeline command via SSM
+          aws ssm send-command \
+            --instance-ids ${{ env.INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["cd /home/ec2-user/CICD && ./pipeline.sh"]' \
+            --comment "Running pipeline on EC2 instance"
+          
+      - name: Upload artifacts to S3
+        run: |
+          # Upload generated artifacts to S3
+          aws s3 cp /path/to/artifacts s3://<bucket-name>/artifacts/ --recursive
