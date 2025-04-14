@@ -43,10 +43,10 @@ jobs:
       id: launch_ec2
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
-          --image-id ami-084568db4383264d4 \  # Update the AMI ID as needed
+          --image-id ami-084568db4383264d4 \
           --count 1 \
           --instance-type t2.micro \
-          --key-name ${{ secrets.AWS_KEY_PAIR_NAME }} \  # Use GitHub Secret for key pair name
+          --key-name ${{ secrets.AWS_KEY_PAIR_NAME }} \
           --security-group-ids ${{ secrets.AWS_SECURITY_GROUP_ID }} \
           --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
           --associate-public-ip-address \
