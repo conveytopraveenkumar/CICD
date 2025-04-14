@@ -1,9 +1,9 @@
-name: Dynamic EC2 Pipeline and S3 Upload
+name: Run EC2 Pipeline and Upload to S3
 
 on:
   push:
     branches:
-      - main
+      - main  # Trigger on push to the main branch
 
 jobs:
   deploy:
@@ -14,65 +14,109 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Configure AWS credentials
+    - name: Set up AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Launch EC2 instance
-      id: ec2
+    - name: Ensure latest AWS CLI version
+      run: |
+        if [ -x "$(command -v aws)" ]; then
+          echo "AWS CLI is already installed. Updating..."
+          curl "https://awscli.amazonaws.com/awscliv2-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+        else
+          echo "Installing AWS CLI..."
+          curl "https://awscli.amazonaws.com/awscliv2-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install
+        fi
+
+    - name: Create Security Group
+      run: |
+        SECURITY_GROUP_ID=$(aws ec2 create-security-group \
+          --group-name MySecurityGroup \
+          --description "Security group for EC2 instance" \
+          --query "GroupId" \
+          --output text)
+        echo "Created security group with ID: $SECURITY_GROUP_ID"
+        
+        # Allow SSH (port 22) and HTTP (port 80) access
+        aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
+        aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 80 --cidr 0.0.0.0/0
+
+    - name: Create Key Pair
+      run: |
+        KEY_PAIR_NAME="my-ec2-key-pair"
+        aws ec2 create-key-pair \
+          --key-name $KEY_PAIR_NAME \
+          --query "KeyMaterial" \
+          --output text > $KEY_PAIR_NAME.pem
+        chmod 400 $KEY_PAIR_NAME.pem
+        echo "Created key pair: $KEY_PAIR_NAME"
+
+    - name: Create a Subnet
+      run: |
+        SUBNET_ID=$(aws ec2 create-subnet \
+          --vpc-id $(aws ec2 describe-vpcs --query "Vpcs[0].VpcId" --output text) \
+          --cidr-block "10.0.1.0/24" \
+          --availability-zone ${{ secrets.AWS_REGION }}a \
+          --query "Subnet.SubnetId" \
+          --output text)
+        echo "Created subnet with ID: $SUBNET_ID"
+
+    - name: Launch EC2 Instance
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
           --image-id ami-084568db4383264d4 \
           --instance-type t2.micro \
-          --key-name github-key \
-          --iam-instance-profile Name="EC2InstanceSSMRole" \
-          --security-group-ids ${{ secrets.AWS_SECURITY_GROUP_ID }} \
-          --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
+          --iam-instance-profile Name="AmazonEC2RoleforSSM" \
+          --key-name my-ec2-key-pair \
+          --security-group-ids $SECURITY_GROUP_ID \
+          --subnet-id $SUBNET_ID \
           --associate-public-ip-address \
-          --query 'Instances[0].InstanceId' \
+          --query "Instances[0].InstanceId" \
           --output text)
+        echo "EC2 Instance launched with ID: $INSTANCE_ID"
 
-        echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-        echo "Launched EC2 instance: $INSTANCE_ID"
-
-    - name: Wait for EC2 to be running
+    - name: Wait for EC2 instance to be running
       run: |
+        echo "Waiting for EC2 instance $INSTANCE_ID to be running..."
         aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-        echo "✅ Instance $INSTANCE_ID is now running."
+        echo "EC2 instance $INSTANCE_ID is now running."
 
-    - name: Wait for SSM to be online
+    - name: Check if SSM agent is online
       run: |
-        echo "Waiting for SSM agent..."
-        for i in {1..30}; do
-          STATUS=$(aws ssm describe-instance-information \
-            --query "InstanceInformationList[?InstanceId=='$INSTANCE_ID'].PingStatus" \
-            --output text)
-          echo "SSM status: $STATUS"
-          if [ "$STATUS" = "Online" ]; then
-            echo "✅ SSM agent is online."
-            break
-          fi
-          sleep 10
-        done
+        echo "Checking SSM status..."
+        STATUS=$(aws ssm describe-instance-information \
+          --query "InstanceInformationList[?InstanceId=='$INSTANCE_ID'].PingStatus" \
+          --output text)
+        if [ "$STATUS" != "Online" ]; then
+          echo "SSM agent is not online. Please check the EC2 instance."
+          exit 1
+        fi
+        echo "✅ SSM agent is online on instance $INSTANCE_ID."
 
-    - name: Run pipeline script via SSM
+    - name: Run pipeline script on EC2 via SSM
       run: |
         COMMAND_ID=$(aws ssm send-command \
-          --instance-ids "$INSTANCE_ID" \
+          --instance-ids $INSTANCE_ID \
           --document-name "AWS-RunShellScript" \
-          --comment "Run pipeline" \
+          --comment "Run pipeline script" \
           --parameters 'commands=["cd /home/ubuntu && curl -O https://raw.githubusercontent.com/conveytopraveenkumar/CICD/main/Pipeline.sh && chmod +x Pipeline.sh && ./Pipeline.sh"]' \
           --query "Command.CommandId" \
           --output text)
-        echo "📦 Command sent. Command ID: $COMMAND_ID"
+        echo "✅ SSM command sent. Command ID: $COMMAND_ID"
 
-    - name: Terminate EC2 instance
+    - name: Notify about artifact upload
       run: |
-        aws ec2 terminate-instances --instance-ids $INSTANCE_ID
-        echo "☠️ Terminated EC2 instance: $INSTANCE_ID"
+        echo "ℹ️ Artifact upload should be handled inside the Pipeline.sh script on EC2."
+        echo "Add this to Pipeline.sh if not already:"
+        echo "aws s3 cp /home/ubuntu/output/ s3://${{ secrets.S3_BUCKET_NAME }}/pipeline-artifacts/ --recursive"
 
-    - name: Done
-      run: echo "✅ Pipeline completed and instance terminated."
+
+    - name: Pipeline Complete
+      run: echo "✅ Pipeline completed successfully."
