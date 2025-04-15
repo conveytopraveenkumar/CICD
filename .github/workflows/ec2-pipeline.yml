@@ -37,7 +37,7 @@ jobs:
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-      # Step 5: Wait for EC2 Instance Initialization to Complete
+      # Step 5: Wait for Instance Initialization to Complete
       - name: Wait for Instance Initialization
         run: |
           while true; do
@@ -54,18 +54,28 @@ jobs:
             sleep 10
           done
 
-      # Step 6: Run Pipeline Script on EC2 using SSM
+      # Step 6: Clone the GitHub Repository on EC2
+      - name: Clone Repository on EC2
+        run: |
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
+            --parameters '{"commands":["cd /home/ubuntu && git clone https://github.com/conveytopraveenkumar/CICD.git || (cd CICD && git pull origin main)"]}' \
+            --region us-east-1 \
+            --query "Command.CommandId" --output text
+
+      # Step 7: Run Pipeline Script on EC2 using SSM
       - name: Execute Pipeline Script via SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["bash /home/ubuntu/pipeline.sh"]}' \
+            --parameters '{"commands":["bash /home/ubuntu/CICD/pipeline.sh"]}' \
             --region us-east-1 \
             --query "Command.CommandId" --output text)
           echo "COMMAND_ID=$COMMAND_ID" >> $GITHUB_ENV
 
-      # Step 7: Verify Output File on EC2 using SSM
+      # Step 8: Verify Output File on EC2 using SSM
       - name: Verify Output File
         run: |
           aws ssm send-command \
@@ -74,7 +84,7 @@ jobs:
             --parameters '{"commands":["test -f /home/ubuntu/output/result.txt || echo Error: result.txt not found"]}' \
             --region us-east-1
 
-      # Step 8: Fetch Output File Using SSM
+      # Step 9: Fetch Output File Using SSM
       - name: Retrieve Output File
         run: |
           aws ssm send-command \
@@ -84,7 +94,7 @@ jobs:
             --region us-east-1 \
             --query "Command.CommandId" --output text
 
-      # Step 9: Upload Output File to S3
+      # Step 10: Upload Output File to S3
       - name: Upload Output to S3
         run: |
           aws s3 cp /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/result-$(date +%s).txt
