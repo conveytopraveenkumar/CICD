@@ -48,13 +48,13 @@ jobs:
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
 
       # Step 6: Configure SSH Key & Known Hosts
-      - name: Configure SSH Key
+      - name: Configure SSH Key & Known Hosts
         run: |
           chmod 400 new-key.pem
           mkdir -p ~/.ssh
           touch ~/.ssh/known_hosts
-          ssh-keygen -R $PUBLIC_IP || true
-          ssh-keyscan -H $PUBLIC_IP >> ~/.ssh/known_hosts
+          ssh-keygen -R ${{ env.PUBLIC_IP }} || true
+          ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
 
       # Step 7: Detect the Correct SSH Username
       - name: Determine SSH Username
