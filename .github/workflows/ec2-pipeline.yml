@@ -46,19 +46,21 @@ jobs:
           done
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
 
+      # Step 6: Ensure SSH Key Permissions & Host Verification
+      - name: Configure SSH Key
+        run: |
+          echo "$pwd"
+          ls -lart
+          mv new-key.pem.txt new-key.pem
+          chmod 400 new-key.pem
+          mkdir -p ~/.ssh
+          touch ~/.ssh/known_hosts
+          ssh-keygen -R ${{ env.PUBLIC_IP }}
+          ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
+
       # Step 7: Run Pipeline Script on EC2
       - name: Execute Pipeline Script on EC2
         run: |
-          echo "$pwd"
-          # List files to verify the presence of the key
-          ls -lart  
-          # Rename the key file (if needed)
-          mv new-key.pem.txt new-key.pem 
-          # Set correct permissions
-          chmod 400 new-key.pem 
-          # Remove old host key entries (Run this before SSH)
-          ssh-keygen -R ${{ env.PUBLIC_IP }} 
-          # Now, connect to EC2 and run the pipeline script
           ssh -i new-key.pem ec2-user@${{ env.PUBLIC_IP }} "bash /home/ec2-user/pipeline.sh"
 
       # Step 8: Ensure the Generated File Exists
@@ -74,4 +76,4 @@ jobs:
       # Step 10: Upload Output File to S3
       - name: Upload Output to S3
         run: |
-          aws s3 cp output.txt s3://cicd-github-artifacts-bucket/output.txt
+          aws s3 cp output.txt s3://your-s3-bucket/output.txt
