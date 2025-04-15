@@ -1,4 +1,4 @@
-name: EC2 Pipeline with Artifacts in S3
+name: AWS CI/CD Workflow
 
 on:
   push:
@@ -6,50 +6,30 @@ on:
       - main
 
 jobs:
-  setup:
+  build_and_deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Set up AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }} # Ensure your region is stored in GitHub Secrets
+          aws-region: us-east-1
 
-  ec2-job:
-    runs-on: ubuntu-latest
-    steps:
       - name: Launch EC2 Instance
-        id: ec2
         run: |
-          # Ensure AWS region is set
-          export AWS_REGION=${{ secrets.AWS_REGION }}
+          INSTANCE_ID=$(aws ec2 run-instances --image-id ami-12345678 \
+            --count 1 --instance-type t2.micro --key-name my-key \
+            --query 'Instances[0].InstanceId' --output text)
+          echo "EC2 Instance Launched: $INSTANCE_ID"
 
-          # Launch EC2 instance using AWS CLI
-          INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ami-014d544cfef21b42d \
-            --count 1 \
-            --instance-type t2.micro \
-            --key-name key-01d3ba78ff072d2b2 \
-            --security-group-ids 683395501335 \
-            --subnet-id subnet-0d6a48aa0ad0c19a4 \
-            --region $AWS_REGION \
-            --query "Instances[0].InstanceId" \
-            --output text)
-
-          echo "EC2 Instance ID: $INSTANCE_ID"
-          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-
-      - name: Wait for EC2 instance to be running
+      - name: Run Hello World Script
         run: |
-          # Wait for the instance to be running using AWS CLI
-          aws ec2 wait instance-running --instance-ids ${{ env.INSTANCE_ID }} --region $AWS_REGION
-          echo "EC2 instance is running."
+          echo "Hello World!" > output.txt
 
-      - name: Upload artifacts to S3
+      - name: Upload Artifacts to S3
         run: |
-          # Upload generated artifacts to S3
-          aws s3 cp /path/to/artifacts s3://<bucket-name>/artifacts/ --recursive --region $AWS_REGION
+          aws s3 cp output.txt s3://my-bucket-name/output.txt
