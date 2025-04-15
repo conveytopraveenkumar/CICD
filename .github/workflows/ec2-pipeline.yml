@@ -21,7 +21,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Step 3: Launch EC2 Instance with AWS CLI Installation
+      # Step 3: Launch EC2 Instance with Direct AWS CLI Installation
       - name: Launch EC2 Instance
         run: |
           INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
@@ -30,7 +30,10 @@ jobs:
             --key-name new-key \
             --security-group-ids sg-0226bb335bbecbf05 \
             --subnet-id subnet-089b826030629808d \
-            --user-data file://install-aws-cli.sh \
+            --user-data "#!/bin/bash
+            sudo apt update
+            sudo apt install -y awscli
+            sudo apt install -y git" \
             --query "Instances[0].InstanceId" --output text)
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
 
@@ -38,24 +41,7 @@ jobs:
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-      # Step 5: Wait for Instance Initialization
-      - name: Wait for Instance Initialization
-        run: |
-          while true; do
-            INSTANCE_STATE=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceState.Name" --output text)
-            SYSTEM_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].SystemStatus.Status" --output text)
-            INSTANCE_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text)
-
-            echo "Current State: $INSTANCE_STATE | System Status: $SYSTEM_STATUS | Instance Status: $INSTANCE_STATUS"
-
-            if [[ "$INSTANCE_STATE" == "running" && "$SYSTEM_STATUS" == "ok" && "$INSTANCE_STATUS" == "ok" ]]; then
-              echo "Instance is fully initialized!"
-              break
-            fi
-            sleep 10
-          done
-
-      # Step 6: Clone GitHub Repository on EC2
+      # Step 5: Clone GitHub Repository on EC2
       - name: Clone Repository on EC2
         run: |
           aws ssm send-command \
@@ -65,7 +51,7 @@ jobs:
             --region us-east-1 \
             --query "Command.CommandId" --output text
 
-      # Step 7: Run Pipeline Script on EC2 using SSM
+      # Step 6: Run Pipeline Script on EC2 using SSM
       - name: Execute Pipeline Script via SSM
         run: |
           aws ssm send-command \
@@ -75,7 +61,7 @@ jobs:
             --region us-east-1 \
             --query "Command.CommandId" --output text
 
-      # Step 8: Upload Output File to S3
+      # Step 7: Upload Output File to S3
       - name: Upload Output to S3
         run: |
           aws ssm send-command \
