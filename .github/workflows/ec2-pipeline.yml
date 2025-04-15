@@ -49,6 +49,8 @@ jobs:
       # Step 7: Run Pipeline Script on EC2
       - name: Execute Pipeline Script on EC2
         run: |
+          echo "$pwd"
+          ls -lart
           ssh -i new-key.pem ec2-user@${{ env.PUBLIC_IP }} "bash /home/ec2-user/pipeline.sh"
 
       # Step 8: Ensure the Generated File Exists
@@ -64,4 +66,4 @@ jobs:
       # Step 10: Upload Output File to S3
       - name: Upload Output to S3
         run: |
-          aws s3 cp output.txt s3://your-s3-bucket/output.txt
+          aws s3 cp output.txt s3://cicd-github-artifacts-bucket/output.txt
