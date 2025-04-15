@@ -51,7 +51,7 @@ jobs:
         run: |
           echo "$pwd"
           ls -lart
-          cp -r /home/cloudshell-user/new-key.pem .
+          mv new-key.pem.txt new-key.pem
           ssh -i new-key.pem ec2-user@${{ env.PUBLIC_IP }} "bash /home/ec2-user/pipeline.sh"
 
       # Step 8: Ensure the Generated File Exists
