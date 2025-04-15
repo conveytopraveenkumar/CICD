@@ -26,6 +26,7 @@ jobs:
         run: |
           INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
             --count 1 --instance-type t2.micro \
+            --iam-instance-profile Name=SSMRole \
             --key-name new-key \
             --security-group-ids sg-0226bb335bbecbf05 \
             --subnet-id subnet-089b826030629808d \
@@ -36,50 +37,37 @@ jobs:
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-      # Step 5: Retrieve EC2 Public IP with Retries
-      - name: Get EC2 Public IP
+      # Step 5: Run Pipeline Script on EC2 using SSM
+      - name: Execute Pipeline Script via SSM
         run: |
-          for i in {1..10}; do
-            PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
-              --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
-            [ -n "$PUBLIC_IP" ] && break
-            sleep 5
-          done
-          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
+            --parameters '{"commands":["bash /home/ec2-user/pipeline.sh"]}' \
+            --region us-east-1 \
+            --query "Command.CommandId" --output text)
+          echo "COMMAND_ID=$COMMAND_ID" >> $GITHUB_ENV
 
-      # Step 6: Configure SSH Key & Known Hosts
-      - name: Configure SSH Key & Known Hosts
-        run: |
-          chmod 400 new-key.pem
-          mkdir -p ~/.ssh
-          touch ~/.ssh/known_hosts
-          ssh-keygen -R ${{ env.PUBLIC_IP }} || true
-          ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
-
-      # Step 7: Detect the Correct SSH Username
-      - name: Determine SSH Username
-        run: |
-          SSH_USER="ec2-user"
-          echo "Checking if ec2-user works..."
-          ssh -o StrictHostKeyChecking=no -i new-key.pem $SSH_USER@$PUBLIC_IP 'echo Connected!' || SSH_USER="ubuntu"
-          echo "SSH_USER=$SSH_USER" >> $GITHUB_ENV
-
-      # Step 8: Run Pipeline Script on EC2
-      - name: Execute Pipeline Script on EC2
-        run: |
-          ssh -i new-key.pem ${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} "bash /home/${{ env.SSH_USER }}/pipeline.sh"
-
-      # Step 9: Verify Output File Before Upload
+      # Step 6: Verify Output File on EC2 using SSM
       - name: Verify Output File
         run: |
-          ssh -i new-key.pem ${{ env.SSH_USER }}@${{ env.PUBLIC_IP }} "test -f /home/${{ env.SSH_USER }}/output.txt || { echo 'Error: output.txt not found'; exit 1; }"
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
+            --parameters '{"commands":["test -f /home/ec2-user/output.txt || echo Error: output.txt not found"]}' \
+            --region us-east-1
 
-      # Step 10: Fetch Output File from EC2
-      - name: Retrieve Output File from EC2
+      # Step 7: Retrieve Output File Using SSM
+      - name: Fetch Output File
         run: |
-          scp -i new-key.pem ${{ env.SSH_USER }}@${{ env.PUBLIC_IP }}:/home/${{ env.SSH_USER }}/output.txt .
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
+            --parameters '{"commands":["cat /home/ec2-user/output.txt"]}' \
+            --region us-east-1 \
+            --query "Command.CommandId" --output text
 
-      # Step 11: Upload Output File to S3
+      # Step 8: Upload Output File to S3
       - name: Upload Output to S3
         run: |
-          aws s3 cp output.txt s3://cicd-github-artifacts-bucket/output.txt
+          aws s3 cp /home/ec2-user/output.txt s3://cicd-github-artifacts-bucket/output.txt
