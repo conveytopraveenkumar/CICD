@@ -21,7 +21,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Step 3: Launch EC2 Instance
+      # Step 3: Launch EC2 Instance with AWS CLI Installation
       - name: Launch EC2 Instance
         run: |
           INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
@@ -30,6 +30,7 @@ jobs:
             --key-name new-key \
             --security-group-ids sg-0226bb335bbecbf05 \
             --subnet-id subnet-089b826030629808d \
+            --user-data file://install-aws-cli.sh \
             --query "Instances[0].InstanceId" --output text)
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
 
@@ -37,7 +38,7 @@ jobs:
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-      # Step 5: Wait for Instance Initialization to Complete
+      # Step 5: Wait for Instance Initialization
       - name: Wait for Instance Initialization
         run: |
           while true; do
@@ -54,7 +55,7 @@ jobs:
             sleep 10
           done
 
-      # Step 6: Clone the GitHub Repository on EC2
+      # Step 6: Clone GitHub Repository on EC2
       - name: Clone Repository on EC2
         run: |
           aws ssm send-command \
@@ -67,34 +68,18 @@ jobs:
       # Step 7: Run Pipeline Script on EC2 using SSM
       - name: Execute Pipeline Script via SSM
         run: |
-          COMMAND_ID=$(aws ssm send-command \
+          aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
             --parameters '{"commands":["bash /home/ubuntu/CICD/pipeline.sh"]}' \
             --region us-east-1 \
-            --query "Command.CommandId" --output text)
-          echo "COMMAND_ID=$COMMAND_ID" >> $GITHUB_ENV
-
-      # Step 8: Verify Output File on EC2 using SSM
-      - name: Verify Output File
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["test -f /home/ubuntu/output/result.txt || echo Error: result.txt not found"]}' \
-            --region us-east-1
-
-      # Step 9: Fetch Output File Using SSM
-      - name: Retrieve Output File
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["cat /home/ubuntu/output/result.txt"]}' \
-            --region us-east-1 \
             --query "Command.CommandId" --output text
 
-      # Step 10: Upload Output File to S3
+      # Step 8: Upload Output File to S3
       - name: Upload Output to S3
         run: |
-          aws s3 cp /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/result-$(date +%s).txt
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
+            --parameters '{"commands":["aws s3 cp /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/result-$(date +%s).txt"]}' \
+            --region us-east-1
