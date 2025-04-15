@@ -26,7 +26,7 @@ jobs:
         run: |
           INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
             --count 1 --instance-type t2.micro \
-            --iam-instance-profile Name=EC2SSMInstanceProfile1 \
+            --iam-instance-profile Name=EC2SSMInstanceProfile \
             --key-name new-key \
             --security-group-ids sg-0226bb335bbecbf05 \
             --subnet-id subnet-089b826030629808d \
@@ -37,7 +37,24 @@ jobs:
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-      # Step 5: Run Pipeline Script on EC2 using SSM
+      # Step 5: Wait for EC2 Instance Initialization to Complete
+      - name: Wait for Instance Initialization
+        run: |
+          while true; do
+            INSTANCE_STATE=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceState.Name" --output text)
+            SYSTEM_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].SystemStatus.Status" --output text)
+            INSTANCE_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text)
+
+            echo "Current State: $INSTANCE_STATE | System Status: $SYSTEM_STATUS | Instance Status: $INSTANCE_STATUS"
+
+            if [[ "$INSTANCE_STATE" == "running" && "$SYSTEM_STATUS" == "ok" && "$INSTANCE_STATUS" == "ok" ]]; then
+              echo "Instance is fully initialized!"
+              break
+            fi
+            sleep 10
+          done
+
+      # Step 6: Run Pipeline Script on EC2 using SSM
       - name: Execute Pipeline Script via SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
@@ -48,7 +65,7 @@ jobs:
             --query "Command.CommandId" --output text)
           echo "COMMAND_ID=$COMMAND_ID" >> $GITHUB_ENV
 
-      # Step 6: Verify Output File on EC2 using SSM
+      # Step 7: Verify Output File on EC2 using SSM
       - name: Verify Output File
         run: |
           aws ssm send-command \
@@ -57,8 +74,8 @@ jobs:
             --parameters '{"commands":["test -f /home/ec2-user/output.txt || echo Error: output.txt not found"]}' \
             --region us-east-1
 
-      # Step 7: Retrieve Output File Using SSM
-      - name: Fetch Output File
+      # Step 8: Fetch Output File Using SSM
+      - name: Retrieve Output File
         run: |
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -67,7 +84,7 @@ jobs:
             --region us-east-1 \
             --query "Command.CommandId" --output text
 
-      # Step 8: Upload Output File to S3
+      # Step 9: Upload Output File to S3
       - name: Upload Output to S3
         run: |
           aws s3 cp /home/ec2-user/output.txt s3://cicd-github-artifacts-bucket/output.txt
