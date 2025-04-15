@@ -26,7 +26,7 @@ jobs:
         run: |
           INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
             --count 1 --instance-type t2.micro \
-            --key-name my-key \
+            --key-name key-01d3ba78ff072d2b2 \
             --security-group-ids sg-0226bb335bbecbf05 \
             --subnet-id subnet-089b826030629808d \
             --query "Instances[0].InstanceId" --output text)
