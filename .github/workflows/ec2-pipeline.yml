@@ -71,7 +71,7 @@ jobs:
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["test -f /home/ec2-user/output.txt || echo Error: output.txt not found"]}' \
+            --parameters '{"commands":["test -f /home/ec2-user/output/output.txt || echo Error: output.txt not found"]}' \
             --region us-east-1
 
       # Step 8: Fetch Output File Using SSM
@@ -80,11 +80,11 @@ jobs:
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["cat /home/ec2-user/output.txt"]}' \
+            --parameters '{"commands":["cat /home/ec2-user/output/output.txt"]}' \
             --region us-east-1 \
             --query "Command.CommandId" --output text
 
       # Step 9: Upload Output File to S3
       - name: Upload Output to S3
         run: |
-          aws s3 cp /home/ec2-user/output.txt s3://cicd-github-artifacts-bucket/output.txt
+          aws s3 cp /home/ec2-user/output/output.txt s3://cicd-github-artifacts-bucket/output.txt
