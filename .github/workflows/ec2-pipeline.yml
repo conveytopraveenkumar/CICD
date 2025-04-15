@@ -1,4 +1,4 @@
-name: AWS CI/CD Workflow
+name: Build and Upload Artifacts
 
 on:
   push:
@@ -6,12 +6,14 @@ on:
       - main
 
 jobs:
-  build_and_deploy:
+  build_and_upload:
     runs-on: ubuntu-latest
     steps:
+      # Step 1: Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # Step 2: Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -19,17 +21,34 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      # Step 3: Launch EC2 Instance
       - name: Launch EC2 Instance
         run: |
-          INSTANCE_ID=$(aws ec2 run-instances --image-id ami-12345678 \
-            --count 1 --instance-type t2.micro --key-name my-key \
-            --query 'Instances[0].InstanceId' --output text)
-          echo "EC2 Instance Launched: $INSTANCE_ID"
+          INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
+            --count 1 --instance-type t2.micro \
+            --key-name my-key \
+            --security-group-ids sg-0226bb335bbecbf05 \
+            --subnet-id subnet-089b826030629808d \
+            --query "Instances[0].InstanceId" --output text)
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
 
-      - name: Run Hello World Script
-        run: |
-          echo "Hello World!" > output.txt
+      # Step 4: Wait for Instance to be Ready
+      - name: Wait for EC2 Instance to Start
+        run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-      - name: Upload Artifacts to S3
+      # Step 5: Get EC2 Public IP (Ensuring instance is running first)
+      - name: Retrieve EC2 Public IP
         run: |
-          aws s3 cp output.txt s3://my-bucket-name/output.txt
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+            --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+      # Step 6: Transfer Pipeline Script to EC2
+      - name: Upload Pipeline Script to EC2
+        run: |
+          scp -i my-key.pem pipeline.sh ec2-user@${{ env.PUBLIC_IP }}:/home/ec2-user/
+      
+      # Step 7: Execute Pipeline Script on EC2
+      - name: Run Pipeline Script on EC2
+        run: |
+          ssh -i my-key.pem ec2-user@${{ env.PUBLIC_IP }} "S3_BUCKET_NAME='your-s3-bucket' bash /home/ec2-user/pipeline.sh"
