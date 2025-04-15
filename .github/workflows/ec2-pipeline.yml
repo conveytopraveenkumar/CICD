@@ -46,10 +46,6 @@ jobs:
           done
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
 
-      # Step 6: Ensure SSH Key Permissions
-      - name: Set Key File Permissions
-        run: chmod 400 new-key.pem
-
       # Step 7: Run Pipeline Script on EC2
       - name: Execute Pipeline Script on EC2
         run: |
