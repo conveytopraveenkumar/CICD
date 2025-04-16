@@ -1,34 +1,31 @@
 name: Build and Upload Artifacts
-
+ 
 on:
   push:
     branches:
       - main
-
+ 
 jobs:
   build_and_upload:
     runs-on: ubuntu-latest
-    env:
-      REGION: us-east-1
-      BUCKET_NAME: cicd-github-artifacts-bucket
-
     steps:
+      # Step 1: Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v3
-
+ 
+      # Step 2: Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.REGION }}
-
+          aws-region: us-east-1
+ 
+      # Step 3: Launch EC2 Instance
       - name: Launch EC2 Instance
         run: |
-          INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ami-09eb231ad55c3963d \
-            --count 1 \
-            --instance-type t2.micro \
+          INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
+            --count 1 --instance-type t2.micro \
             --iam-instance-profile Name=EC2SSMInstanceProfile1 \
             --key-name new-key \
             --security-group-ids sg-0226bb335bbecbf05 \
@@ -39,64 +36,70 @@ jobs:
             sudo apt install -y awscli git' \
             --query 'Instances[0].InstanceId' \
             --output text)
-
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-          echo "Launched EC2 instance: $INSTANCE_ID"
-
+ 
+      # Step 4: Wait for EC2 Instance to Start
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-
+ 
+      # Step 5: Wait for Instance Initialization to Complete
       - name: Wait for Instance Initialization
         run: |
           while true; do
-            STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID \
-              --query "InstanceStatuses[0].{State:InstanceState.Name,System:SystemStatus.Status,Instance:InstanceStatus.Status}" \
-              --output text)
-            echo "$STATUS"
-            [[ "$STATUS" == *"running ok ok"* ]] && break
+            INSTANCE_STATE=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceState.Name" --output text)
+            SYSTEM_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].SystemStatus.Status" --output text)
+            INSTANCE_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text)
+ 
+            echo "Current State: $INSTANCE_STATE | System Status: $SYSTEM_STATUS | Instance Status: $INSTANCE_STATUS"
+ 
+            if [[ "$INSTANCE_STATE" == "running" && "$SYSTEM_STATUS" == "ok" && "$INSTANCE_STATUS" == "ok" ]]; then
+              echo "Instance is fully initialized!"
+              break
+            fi
             sleep 10
           done
-
+ 
+      # Step 6: Clone the GitHub Repository on EC2
       - name: Clone Repository on EC2
         run: |
-          COMMAND_ID=$(aws ssm send-command \
+          aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --targets Key=InstanceIds,Values=$INSTANCE_ID \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
             --parameters '{"commands":["cd /home/ubuntu && git clone https://github.com/conveytopraveenkumar/CICD.git || (cd CICD && git pull origin main)"]}' \
-            --region $REGION \
-            --query "Command.CommandId" --output text)
-
-          aws ssm wait command-executed --command-id $COMMAND_ID --instance-id $INSTANCE_ID
-
-      - name: Execute Pipeline Script
+            --region us-east-1 \
+            --query "Command.CommandId" --output text
+ 
+      # Step 7: Run Pipeline Script on EC2 using SSM
+      - name: Execute Pipeline Script via SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --targets Key=InstanceIds,Values=$INSTANCE_ID \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
             --parameters '{"commands":["bash /home/ubuntu/CICD/pipeline.sh"]}' \
-            --region $REGION \
+            --region us-east-1 \
             --query "Command.CommandId" --output text)
-
-          aws ssm wait command-executed --command-id $COMMAND_ID --instance-id $INSTANCE_ID
-
+          echo "COMMAND_ID=$COMMAND_ID" >> $GITHUB_ENV
+ 
+      # Step 8: Verify Output File on EC2 using SSM
       - name: Verify Output File
         run: |
-          COMMAND_ID=$(aws ssm send-command \
+          aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --targets Key=InstanceIds,Values=$INSTANCE_ID \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
             --parameters '{"commands":["test -f /home/ubuntu/output/result.txt || echo Error: result.txt not found"]}' \
-            --region $REGION \
-            --query "Command.CommandId" --output text)
-
-          aws ssm wait command-executed --command-id $COMMAND_ID --instance-id $INSTANCE_ID
-
+            --region us-east-1
+ 
+      # Step 9: Fetch Output File Using SSM
+      - name: Retrieve Output File
+        run: |
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
+            --parameters '{"commands":["cat /home/ubuntu/output/result.txt"]}' \
+            --region us-east-1 \
+            --query "Command.CommandId" --output text
+ 
+      # Step 10: Upload Output File to S3
       - name: Upload Output to S3
         run: |
-          COMMAND_ID=$(aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets Key=InstanceIds,Values=$INSTANCE_ID \
-            --parameters '{"commands":["aws s3 cp /home/ubuntu/output/result.txt s3://'"$BUCKET_NAME"'/result-${GITHUB_RUN_NUMBER}.txt"]}' \
-            --region $REGION \
-            --query "Command.CommandId" --output text)
-
-          aws ssm wait command-executed --command-id $COMMAND_ID --instance-id $INSTANCE_ID
+          aws s3 cp /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/result-$(date +%s).txt
