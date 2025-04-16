@@ -14,9 +14,12 @@ pwd
 # Ensure AWS CLI is installed
 aws --version || { echo "AWS CLI not installed! Exiting..."; exit 1; }
 
+echo "Checking AWS credentials..."
+aws sts get-caller-identity || { echo "AWS credentials not available! Exiting..."; exit 1; }
+
 echo "Copying file from EC2 to S3 bucket..."
 
-# Upload the file to S3 with debug mode to catch errors
-aws s3 cp result.txt s3://cicd-github-artifacts-bucket/result-$(date +%s).txt --debug
+# Upload with debug mode
+aws s3 cp result.txt s3://cicd-github-artifacts-bucket/result-$(date +%s).txt --debug || { echo "S3 upload failed! Exiting..."; exit 1; }
 
 echo "Artifact uploaded to S3."
