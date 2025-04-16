@@ -21,7 +21,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Step 3: Launch EC2 Instance (AWS CLI NOT installed here)
+      # Step 3: Launch EC2 Instance
       - name: Launch EC2 Instance
         run: |
           INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
@@ -37,8 +37,8 @@ jobs:
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
-      # Step 5: Ensure EC2 Instance Is Ready for SSM
-      - name: Ensure EC2 Instance Is Fully Initialized
+      # Step 5: Ensure EC2 Instance Is Fully Initialized
+      - name: Ensure EC2 Instance Is Ready for SSM
         run: |
           while true; do
             INSTANCE_STATE=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceState.Name" --output text)
@@ -90,21 +90,3 @@ jobs:
             --parameters '{"commands":["bash /home/ubuntu/CICD/Pipeline.sh"]}' \
             --region us-east-1 \
             --query "Command.CommandId" --output text
-
-      # Step 9: Verify Output File on EC2 using SSM
-      - name: Verify Output File
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["test -f /home/ubuntu/output/result.txt || echo Error: result.txt not found"]}' \
-            --region us-east-1
-
-      # Step 10: Upload Output File to S3
-      - name: Upload Output to S3
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["aws s3 cp /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/result-$(date +%s).txt"]}' \
-            --region us-east-1
