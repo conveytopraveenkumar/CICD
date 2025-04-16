@@ -75,7 +75,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["bash /home/ubuntu/CICD/pipeline.sh"]}' \
+            --parameters '{"commands":["bash /home/ubuntu/CICD/Pipeline.sh"]}' \
             --region us-east-1 \
             --query "Command.CommandId" --output text)
           echo "COMMAND_ID=$COMMAND_ID" >> $GITHUB_ENV
