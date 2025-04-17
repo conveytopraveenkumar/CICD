@@ -53,31 +53,17 @@ jobs:
             fi
             sleep 10
           done
-      # Step 6: Install AWS CLI on EC2 via SSM
-      - name: Install AWS CLI via SSM
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":[
-              "sudo apt update",
-              "sudo apt install -y unzip git",
-              "curl \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o \"awscliv2.zip\"",
-              "unzip awscliv2.zip",
-              "sudo ./aws/install",
-              "aws --version || { echo \"AWS CLI installation failed!\"; exit 1; }",
-              "aws sts get-caller-identity || { echo \"AWS credentials not configured!\"; exit 1; }"
-            ]}' \
-            --region us-east-1 \
-            --query "Command.CommandId" --output text
 
-      # Step 6: Log Execution Metadata and Upload to S3
-      - name: Log Execution Metadata in S3
+      # Step 6: Create File and Sync to S3
+      - name: Create File and Sync to S3
         run: |
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
             --parameters '{"commands":[
-              "aws s3api put-object --bucket cicd-github-artifacts-bucket --key pipeline-metadata-$(date +%s).json --body '\''{\"execution_time\":\"$(date)\", \"instance_id\":\"$INSTANCE_ID\"}'\''"
+              "mkdir -p /home/ubuntu/output",
+              "echo Pipeline execution result at $(date) > /home/ubuntu/output/result.txt",
+              "chmod +r /home/ubuntu/output/result.txt",
+              "rsync -av /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/"
             ]}' \
             --region us-east-1
