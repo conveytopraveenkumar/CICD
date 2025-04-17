@@ -54,45 +54,13 @@ jobs:
             sleep 10
           done
 
-      # Step 6: Install AWS CLI on EC2 via SSM
-      - name: Install AWS CLI via SSM
+      # Step 6: Log Execution Metadata and Upload to S3
+      - name: Log Execution Metadata in S3
         run: |
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
             --parameters '{"commands":[
-              "sudo apt update",
-              "sudo apt install -y unzip git",
-              "curl \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o \"awscliv2.zip\"",
-              "unzip awscliv2.zip",
-              "sudo ./aws/install",
-              "aws --version || { echo \"AWS CLI installation failed!\"; exit 1; }",
-              "aws sts get-caller-identity || { echo \"AWS credentials not configured!\"; exit 1; }"
+              "aws s3api put-object --bucket cicd-github-artifacts-bucket --key pipeline-metadata-$(date +%s).json --body '\''{\"execution_time\":\"$(date)\", \"instance_id\":\"$INSTANCE_ID\"}'\''"
             ]}' \
-            --region us-east-1 \
-            --query "Command.CommandId" --output text
-
-      # Step 7: Clone the GitHub Repository on EC2
-      - name: Clone Repository on EC2
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":["cd /home/ubuntu && git clone https://github.com/conveytopraveenkumar/CICD.git || (cd CICD && git pull origin main)"]}' \
-            --region us-east-1 \
-            --query "Command.CommandId" --output text
-
-      # Step 8: Make Pipeline Script Executable and Run It
-      - name: Execute Pipeline Script via SSM
-        run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":[
-              "sudo -u ubuntu chmod +x /home/ubuntu/CICD/Pipeline.sh",
-              "sudo -u ubuntu bash /home/ubuntu/CICD/Pipeline.sh > /home/ubuntu/CICD/Pipeline.log 2>&1",
-              "aws s3 cp /home/ubuntu/CICD/Pipeline.log s3://cicd-github-artifacts-bucket/",
-              "aws s3 cp /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/result-1.txt --debug"
-            ]}' \
-            --region us-east-1 \
-            --output-s3-bucket-name "cicd-github-artifacts-bucket"
+            --region us-east-1
