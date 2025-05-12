@@ -6,14 +6,12 @@ on:
       - main
 
 jobs:
-  build_and_upload:
+  setup:
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -21,10 +19,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Step 3: Launch EC2 Instance
       - name: Launch EC2 Instance
         run: |
-          INSTANCE_ID=$(aws ec2 run-instances --image-id ami-09eb231ad55c3963d \
+          INSTANCE_ID=$(aws ec2 run-instances --image-id ami-0f9de6e2d2f067fca \
             --count 1 --instance-type t2.micro \
             --iam-instance-profile Name=EC2SSMInstanceProfile1 \
             --key-name new-key \
@@ -32,38 +29,45 @@ jobs:
             --subnet-id subnet-089b826030629808d \
             --query "Instances[0].InstanceId" --output text)
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-
-      # Step 4: Wait for EC2 Instance to Start
+  
       - name: Wait for EC2 Instance to Start
         run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-
-      # Step 5: Ensure EC2 Instance Is Fully Initialized
-      - name: Ensure EC2 Instance Is Ready for SSM
+      - name: Ensure EC2 Instance Is Fully Initialized
         run: |
           while true; do
             INSTANCE_STATE=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceState.Name" --output text)
             SYSTEM_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].SystemStatus.Status" --output text)
             INSTANCE_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text)
-
             echo "Current State: $INSTANCE_STATE | System Status: $SYSTEM_STATUS | Instance Status: $INSTANCE_STATUS"
-
             if [[ "$INSTANCE_STATE" == "running" && "$SYSTEM_STATUS" == "ok" && "$INSTANCE_STATUS" == "ok" ]]; then
               echo "Instance is fully initialized!"
               break
             fi
             sleep 10
           done
-
-      # Step 6: Create File and Sync to S3
-      - name: Create File and Sync to S3
+      - name: Configure SSH Key for EC2 Access
         run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "[{\"Key\":\"InstanceIds\",\"Values\":[\"$INSTANCE_ID\"]}]" \
-            --parameters '{"commands":[
-              "mkdir -p /home/ubuntu/output",
-              "echo Pipeline execution result at $(date) > /home/ubuntu/output/result.txt",
-              "chmod +r /home/ubuntu/output/result.txt",
-              "rsync -av /home/ubuntu/output/result.txt s3://cicd-github-artifacts-bucket/"
-            ]}' \
-            --region us-east-1
+         echo "${{ secrets.AWS_SSH_PRIVATE_KEY }}" > private-key.pem
+         chmod 600 private-key.pem
+      
+      - name: SSH into Self-Hosted Runner
+        run: |
+          ssh -i  << 'EOF'
+          cd /home/ubuntu/actions-runner
+          ./run.sh
+          EOF
+
+
+  build_and_upload:
+    needs: setup
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3  
+        
+      - name: Execute Build on Self-Hosted Runner
+        run: |
+          mkdir -p /home/ubuntu/output
+          echo "Hello, GitHub Runner!" >> /home/ubuntu/output_test/myfile.txt
+          echo "Pipeline execution result at $(date)" >> /home/ubuntu/output_test/result.txt
+          ls -la /home/ubuntu/output
