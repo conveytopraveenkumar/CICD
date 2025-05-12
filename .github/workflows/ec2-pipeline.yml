@@ -53,7 +53,7 @@ jobs:
           done
       - name: Configure SSH Key for EC2 Access
         run: |
-         echo "${{ secrets.AWS_SSH_PRIVATE_KEY }}" > private-key.pem
+         echo "${{ secrets.SSH_PRIVATE_KEY }}" > private-key.pem
          chmod 600 private-key.pem
       
       - name: SSH into Self-Hosted Runner
