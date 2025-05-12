@@ -52,7 +52,7 @@ jobs:
       
       - name: SSH into Self-Hosted Runner
         run: |
-          ssh -i  << 'EOF'
+          ssh -i private-key.pem -o StrictHostKeyChecking=no ubuntu@${INSTANCE_IP} << "EOF"
           cd /home/ubuntu/actions-runner
           ./run.sh
           EOF
