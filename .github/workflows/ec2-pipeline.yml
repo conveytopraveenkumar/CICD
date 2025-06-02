@@ -18,62 +18,67 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Launch EC2 Instance
-        id: set_instance
+      - name: Add Test Content to Summary
         run: |
-          INSTANCE_NAME="AOSP-Build-Instance-$(date +%Y%m%d%H%M%S)"
-          INSTANCE_ID=$(aws ec2 run-instances --image-id ami-0f9de6e2d2f067fca \
-            --count 1 --instance-type t2.micro \
-            --key-name new-key \
-            --iam-instance-profile Name=EC2SSMInstanceProfile1 \
-            --security-group-ids sg-0226bb335bbecbf05 \
-            --subnet-id subnet-089b826030629808d \
-             --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME}]" \
-            --query "Instances[0].InstanceId" --output text)
-          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-          INSTANCE_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
-          echo "INSTANCE_IP=$INSTANCE_IP" >> $GITHUB_ENV
-          echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_ENV
+          echo "### 🔹 GitHub Summary Test" >> $GITHUB_STEP_SUMMARY
+          echo "**This is a test message to check summary display.**" >> $GITHUB_STEP_SUMMARY
+          echo "[Sample Link](https://example.com)" >> $GITHUB_STEP_SUMMARY
+
+  #     - name: Launch EC2 Instance
+  #       id: set_instance
+  #       run: |
+  #         INSTANCE_NAME="AOSP-Build-Instance-$(date +%Y%m%d%H%M%S)"
+  #         INSTANCE_ID=$(aws ec2 run-instances --image-id ami-0f9de6e2d2f067fca \
+  #           --count 1 --instance-type t2.micro \
+  #           --key-name new-key \
+  #           --iam-instance-profile Name=EC2SSMInstanceProfile1 \
+  #           --security-group-ids sg-0226bb335bbecbf05 \
+  #           --subnet-id subnet-089b826030629808d \
+  #            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME}]" \
+  #           --query "Instances[0].InstanceId" --output text)
+  #         echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+  #         INSTANCE_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+  #         echo "INSTANCE_IP=$INSTANCE_IP" >> $GITHUB_ENV
+  #         echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_ENV
   
-      - name: Wait for EC2 Instance to Start
-        run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-      - name: Ensure EC2 Instance Is Fully Initialized
-        run: |
-          while true; do
-            INSTANCE_STATE=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceState.Name" --output text)
-            SYSTEM_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].SystemStatus.Status" --output text)
-            INSTANCE_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text)
-            echo "Current State: $INSTANCE_STATE | System Status: $SYSTEM_STATUS | Instance Status: $INSTANCE_STATUS"
-            if [[ "$INSTANCE_STATE" == "running" && "$SYSTEM_STATUS" == "ok" && "$INSTANCE_STATUS" == "ok" ]]; then
-              echo "Instance is fully initialized!"
-              break
-            fi
-            sleep 10
-          done
-      - name: Configure SSH Key for EC2 Access
-        run: |
-         echo "${{ secrets.SSH_PRIVATE_KEY }}" > private-key.pem
-         chmod 600 private-key.pem
+  #     - name: Wait for EC2 Instance to Start
+  #       run: aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+  #     - name: Ensure EC2 Instance Is Fully Initialized
+  #       run: |
+  #         while true; do
+  #           INSTANCE_STATE=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceState.Name" --output text)
+  #           SYSTEM_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].SystemStatus.Status" --output text)
+  #           INSTANCE_STATUS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text)
+  #           echo "Current State: $INSTANCE_STATE | System Status: $SYSTEM_STATUS | Instance Status: $INSTANCE_STATUS"
+  #           if [[ "$INSTANCE_STATE" == "running" && "$SYSTEM_STATUS" == "ok" && "$INSTANCE_STATUS" == "ok" ]]; then
+  #             echo "Instance is fully initialized!"
+  #             break
+  #           fi
+  #           sleep 10
+  #         done
+  #     - name: Configure SSH Key for EC2 Access
+  #       run: |
+  #        echo "${{ secrets.SSH_PRIVATE_KEY }}" > private-key.pem
+  #        chmod 600 private-key.pem
       
-      - name: SSH into Self-Hosted Runner
-        run: |
-          ssh -i private-key.pem -o StrictHostKeyChecking=no ubuntu@${INSTANCE_IP} << "EOF"
-          cd /home/ubuntu/actions-runner
-          ./run.sh
-          EOF
+  #     - name: SSH into Self-Hosted Runner
+  #       run: |
+  #         ssh -i private-key.pem -o StrictHostKeyChecking=no ubuntu@${INSTANCE_IP} << "EOF"
+  #         cd /home/ubuntu/actions-runner
+  #         ./run.sh
+  #         EOF
 
 
-  build_and_upload:
-    needs: setup
-    runs-on: self-hosted
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3  
+  # build_and_upload:
+  #   needs: setup
+  #   runs-on: self-hosted
+  #   steps:
+  #     - name: Checkout Repository
+  #       uses: actions/checkout@v3  
         
-      - name: Execute Build on Self-Hosted Runner
-        run: |
-          mkdir -p /home/ubuntu/output
-          echo "Hello, GitHub Runner!" >> /home/ubuntu/output_test/myfile.txt
-          echo "Pipeline execution result at $(date)" >> /home/ubuntu/output_test/result.txt
-          ls -la /home/ubuntu/output
+  #     - name: Execute Build on Self-Hosted Runner
+  #       run: |
+  #         mkdir -p /home/ubuntu/output
+  #         echo "Hello, GitHub Runner!" >> /home/ubuntu/output_test/myfile.txt
+  #         echo "Pipeline execution result at $(date)" >> /home/ubuntu/output_test/result.txt
+  #         ls -la /home/ubuntu/output
